@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0757cb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Kompassi" />
+    <title>Kompassi</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/icons/kompassi-app-icon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/icons/kompassi-app-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="app-sidebar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">K</div>
+          <div>
+            <h1>Kompassi</h1>
+          </div>
+        </div>
+
+        <nav class="section-nav" id="sectionNav" aria-label="Huvudmeny">
+          <button class="section-tab active" type="button" data-section="today"><span class="nav-icon" aria-hidden="true"><i data-lucide="house"></i></span><span>Idag</span></button>
+          <button class="section-tab" type="button" data-section="coach"><span class="nav-icon" aria-hidden="true"><i data-lucide="messages-square"></i></span><span>Coach</span></button>
+          <button class="section-tab" type="button" data-section="plan"><span class="nav-icon" aria-hidden="true"><i data-lucide="map"></i></span><span>Min plan</span></button>
+          <button class="section-tab" type="button" data-section="training"><span class="nav-icon" aria-hidden="true"><i data-lucide="dumbbell"></i></span><span>Träning</span></button>
+          <button class="section-tab" type="button" data-section="finance"><span class="nav-icon" aria-hidden="true"><i data-lucide="wallet-cards"></i></span><span>Ekonomi</span></button>
+          <button class="section-tab" type="button" data-section="progress"><span class="nav-icon" aria-hidden="true"><i data-lucide="chart-no-axes-combined"></i></span><span>Utveckling</span></button>
+        </nav>
+
+        <div class="sidebar-streak" id="sidebarStreak" aria-live="polite"></div>
+        <button class="sidebar-data-button" type="button" data-open-data><i data-lucide="database"></i><span>Data & backup</span></button>
+        <div class="sidebar-footer"><span>K</span><strong>Kompassi</strong></div>
+      </aside>
+
+      <div class="app-main">
+        <header class="topbar">
+          <div class="mobile-brand">
+            <div class="brand-mark" aria-hidden="true">K</div>
+            <h1>Kompassi</h1>
+            <button class="icon-button mobile-data-button" type="button" data-open-data aria-label="Öppna data och backup"><i data-lucide="database"></i></button>
+          </div>
+
+          <div class="topbar-actions">
+            <label class="year-picker">
+              <span>Budgetår</span>
+              <select id="yearSelect" aria-label="Välj budgetår"></select>
+            </label>
+            <button class="button button-secondary" id="exportButton" type="button">Exportera</button>
+            <button class="button button-primary" id="addYearButton" type="button">+ Nytt år</button>
+          </div>
+        </header>
+
+        <nav class="period-nav" id="budgetNav" aria-label="Välj ekonomiperiod" hidden>
+          <button class="period-tab active" type="button" data-view="dashboard">Översikt</button>
+          <button class="month-scroll-button" id="monthScrollLeft" type="button" aria-label="Visa tidigare månader">‹</button>
+          <div class="month-tabs" id="monthTabs"></div>
+          <button class="month-scroll-button" id="monthScrollRight" type="button" aria-label="Visa senare månader">›</button>
+        </nav>
+
+        <main id="app" tabindex="-1"></main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="dataDialog" class="data-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">Din information</p><h2>Data & backup</h2></div>
+          <button class="icon-button" type="button" data-close-data aria-label="Stäng"><i data-lucide="x"></i></button>
+        </div>
+        <div class="data-privacy-note"><i data-lucide="smartphone"></i><p><strong>Sparas på den här enheten</strong><span>Kompassi skickar inte dina uppgifter till något konto eller moln.</span></p></div>
+        <div class="data-actions">
+          <button class="data-action" id="exportDataButton" type="button"><span><i data-lucide="download"></i></span><strong>Spara säkerhetskopia</strong><small>Ladda ner all data som en fil</small></button>
+          <button class="data-action" id="importDataButton" type="button"><span><i data-lucide="upload"></i></span><strong>Importera säkerhetskopia</strong><small>Flytta in data från datorn</small></button>
+          <button class="data-action install-action" type="button" data-install-app hidden><span><i data-lucide="download-cloud"></i></span><strong>Installera Kompassi</strong><small>Lägg appen på hemskärmen</small></button>
+        </div>
+        <input id="importDataInput" type="file" accept="application/json,.json" hidden />
+        <p class="data-warning">Import ersätter informationen som finns på den här enheten. En automatisk säkerhetskopia laddas ner först.</p>
+      </form>
+    </dialog>
+
+    <dialog id="yearDialog">
+      <form method="dialog" id="yearForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Ny period</p>
+            <h2>Lägg till budgetår</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="Stäng">×</button>
+        </div>
+        <label class="field">
+          <span>År</span>
+          <input id="newYearInput" type="number" min="2020" max="2100" required />
+        </label>
+        <label class="check-row">
+          <input id="copyBudgetInput" type="checkbox" checked />
+          <span>Kopiera budget och mål, inte utfall, från nuvarande år</span>
+        </label>
+        <div class="dialog-actions">
+          <button class="button button-secondary" type="button" data-close-dialog>Avbryt</button>
+          <button class="button button-primary" type="submit">Skapa år</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="assets/vendor/lucide.min.js"></script>
+    <script src="app.js"></script>
+    <script src="pwa.js"></script>
+  </body>
+</html>

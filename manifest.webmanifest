@@ -1,0 +1,21 @@
+{
+  "id": "./index.html",
+  "name": "Kompassi",
+  "short_name": "Kompassi",
+  "description": "Din personliga kompass för mål, träning, välmående och ekonomi.",
+  "lang": "sv-SE",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f8fc",
+  "theme_color": "#0757cb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "assets/icons/kompassi-app-icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
