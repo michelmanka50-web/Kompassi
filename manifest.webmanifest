@@ -2,13 +2,13 @@
   "id": "./index.html",
   "name": "Kompassi",
   "short_name": "Kompassi",
-  "description": "Din personliga kompass för mål, träning, välmående och ekonomi.",
+  "description": "Din personliga app för ekonomi och träning.",
   "lang": "sv-SE",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f8fc",
-  "theme_color": "#0757cb",
+  "background_color": "#ffffff",
+  "theme_color": "#0088ff",
   "orientation": "any",
   "icons": [
     {

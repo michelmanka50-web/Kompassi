@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0757cb" />
+    <meta name="theme-color" content="#0088ff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Kompassi" />
@@ -12,6 +12,12 @@
     <link rel="icon" href="assets/icons/kompassi-app-icon.png" type="image/png" />
     <link rel="apple-touch-icon" href="assets/icons/kompassi-app-icon.png" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        var stored = localStorage.getItem("kompassi-theme");
+        if (stored === "light" || stored === "dark") document.documentElement.dataset.theme = stored;
+      })();
+    </script>
   </head>
   <body>
     <div class="app-shell">
@@ -25,14 +31,10 @@
 
         <nav class="section-nav" id="sectionNav" aria-label="Huvudmeny">
           <button class="section-tab active" type="button" data-section="today"><span class="nav-icon" aria-hidden="true"><i data-lucide="house"></i></span><span>Idag</span></button>
-          <button class="section-tab" type="button" data-section="coach"><span class="nav-icon" aria-hidden="true"><i data-lucide="messages-square"></i></span><span>Coach</span></button>
-          <button class="section-tab" type="button" data-section="plan"><span class="nav-icon" aria-hidden="true"><i data-lucide="map"></i></span><span>Min plan</span></button>
-          <button class="section-tab" type="button" data-section="training"><span class="nav-icon" aria-hidden="true"><i data-lucide="dumbbell"></i></span><span>Träning</span></button>
           <button class="section-tab" type="button" data-section="finance"><span class="nav-icon" aria-hidden="true"><i data-lucide="wallet-cards"></i></span><span>Ekonomi</span></button>
-          <button class="section-tab" type="button" data-section="progress"><span class="nav-icon" aria-hidden="true"><i data-lucide="chart-no-axes-combined"></i></span><span>Utveckling</span></button>
+          <button class="section-tab" type="button" data-section="training"><span class="nav-icon" aria-hidden="true"><i data-lucide="dumbbell"></i></span><span>Träning</span></button>
         </nav>
 
-        <div class="sidebar-streak" id="sidebarStreak" aria-live="polite"></div>
         <button class="sidebar-data-button" type="button" data-open-data><i data-lucide="database"></i><span>Data & backup</span></button>
         <div class="sidebar-footer"><span>K</span><strong>Kompassi</strong></div>
       </aside>
@@ -76,6 +78,7 @@
         </div>
         <div class="data-privacy-note"><i data-lucide="smartphone"></i><p><strong>Sparas på den här enheten</strong><span>Kompassi skickar inte dina uppgifter till något konto eller moln.</span></p></div>
         <div class="data-actions">
+          <button class="data-action" id="themeToggleButton" type="button"><span><i data-lucide="moon"></i></span><strong>Mörkt läge</strong><small>Byt mellan ljust och mörkt utseende</small></button>
           <button class="data-action" id="exportDataButton" type="button"><span><i data-lucide="download"></i></span><strong>Spara säkerhetskopia</strong><small>Ladda ner all data som en fil</small></button>
           <button class="data-action" id="importDataButton" type="button"><span><i data-lucide="upload"></i></span><strong>Importera säkerhetskopia</strong><small>Flytta in data från datorn</small></button>
           <button class="data-action install-action" type="button" data-install-app hidden><span><i data-lucide="download-cloud"></i></span><strong>Installera Kompassi</strong><small>Lägg appen på hemskärmen</small></button>
@@ -100,7 +103,7 @@
         </label>
         <label class="check-row">
           <input id="copyBudgetInput" type="checkbox" checked />
-          <span>Kopiera budget och mål, inte utfall, från nuvarande år</span>
+          <span>Kopiera budget och mål till det nya året (utfallet följer inte med)</span>
         </label>
         <div class="dialog-actions">
           <button class="button button-secondary" type="button" data-close-dialog>Avbryt</button>

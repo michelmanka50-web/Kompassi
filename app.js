@@ -15,25 +15,14 @@ const MONTHS = [
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
 const STORAGE_KEY = "budgetti-data-v1";
+const THEME_KEY = "kompassi-theme";
 const currentCalendarMonth = new Date().getMonth();
-const SUCCESS_THRESHOLD = 70;
-const GOAL_AREAS = ["Livsstil", "Mat", "Hälsa", "Återhämtning", "Ekonomi", "Relationer", "Arbete"];
-const AREA_META = {
-  Mat: { key: "food", icon: "utensils" },
-  Hälsa: { key: "health", icon: "activity" },
-  Återhämtning: { key: "recovery", icon: "moon" },
-  Ekonomi: { key: "finance", icon: "credit-card" },
-  Relationer: { key: "relations", icon: "heart" },
-  Arbete: { key: "work", icon: "briefcase" },
-  Livsstil: { key: "lifestyle", icon: "compass" },
-};
 
 let state = loadState();
 let activeSection = "today";
 let activeView = "dashboard";
 let toastTimer;
 let showAllMonths = false;
-let celebrationActive = false;
 
 const app = document.querySelector("#app");
 const sectionNav = document.querySelector("#sectionNav");
@@ -86,6 +75,7 @@ function createYear(year, withExample = false) {
   const filledThrough = withExample ? Math.min(currentCalendarMonth, 7) : -1;
   return {
     savingsGoal: 72000,
+    savingsGoalDate: `${year}-12-31`,
     goals: [
       { id: uid(), name: "Buffert", target: 50000, saved: withExample ? 31500 : 0 },
       { id: uid(), name: "Semester", target: 25000, saved: withExample ? 12800 : 0 },
@@ -96,20 +86,6 @@ function createYear(year, withExample = false) {
 
 function createPersonalState() {
   return {
-    weeklyFocus: "Gör det viktigaste enkelt att genomföra.",
-    goals: [
-      { id: uid(), name: "Äta hemlagad mat", area: "Mat", target: "5 dagar i veckan", active: true },
-      { id: uid(), name: "Träna", area: "Hälsa", target: "3 pass i veckan", active: true },
-      { id: uid(), name: "Lägga mig före 23", area: "Återhämtning", target: "På vardagar", active: true },
-      { id: uid(), name: "Undvika spontanköp", area: "Ekonomi", target: "Köp över 1 000 kr väntar 24 timmar", active: true },
-    ],
-    guidelines: [
-      { id: uid(), text: "Jag väljer det som hjälper mitt framtida jag." },
-      { id: uid(), text: "En missad dag betyder inte att planen är förstörd." },
-    ],
-    dailyChecks: {},
-    dailySnapshots: {},
-    celebratedDates: [],
     training: {
       weeklyTarget: 3,
       sessions: [
@@ -139,15 +115,6 @@ function createPersonalState() {
       ],
       routineLogs: [],
     },
-    coachMessages: [
-      {
-        id: uid(),
-        role: "coach",
-        text: "Hej. Jag håller koll på din riktning tillsammans med dig. Vad vill du reda ut eller bestämma idag?",
-        createdAt: new Date().toISOString(),
-      },
-    ],
-    reflections: [],
   };
 }
 
@@ -163,8 +130,9 @@ function createInitialState() {
 }
 
 function normalizeBudgetYears(years) {
-  Object.values(years).forEach((year) => {
+  Object.entries(years).forEach(([key, year]) => {
     if (!Array.isArray(year.goals)) year.goals = [];
+    if (!year.savingsGoalDate) year.savingsGoalDate = `${key}-12-31`;
     if (!Array.isArray(year.months)) throw new Error("Budgetår saknar månader");
     year.months.forEach((month) => {
       if (!Array.isArray(month.incomes)) month.incomes = [];
@@ -197,11 +165,6 @@ function normalizePersonalState(personal) {
   const normalized = {
     ...defaults,
     ...personal,
-    goals: Array.isArray(personal.goals) ? personal.goals : defaults.goals,
-    guidelines: Array.isArray(personal.guidelines) ? personal.guidelines : defaults.guidelines,
-    dailyChecks: personal.dailyChecks && typeof personal.dailyChecks === "object" ? personal.dailyChecks : {},
-    dailySnapshots: personal.dailySnapshots && typeof personal.dailySnapshots === "object" ? personal.dailySnapshots : {},
-    celebratedDates: Array.isArray(personal.celebratedDates) ? personal.celebratedDates : [],
     training: {
       weeklyTarget: Math.max(1, Number(savedTraining.weeklyTarget) || defaults.training.weeklyTarget),
       sessions: Array.isArray(savedTraining.sessions)
@@ -215,24 +178,7 @@ function normalizePersonalState(personal) {
       routines: Array.isArray(savedTraining.routines) ? savedTraining.routines : defaults.training.routines,
       routineLogs: Array.isArray(savedTraining.routineLogs) ? savedTraining.routineLogs : [],
     },
-    coachMessages: Array.isArray(personal.coachMessages) && personal.coachMessages.length
-      ? personal.coachMessages
-      : defaults.coachMessages,
-    reflections: Array.isArray(personal.reflections) ? personal.reflections : [],
   };
-
-  Object.entries(normalized.dailyChecks).forEach(([day, checks]) => {
-    if (normalized.dailySnapshots[day]) return;
-    const eligibleGoalIds = normalized.goals.filter((goal) => goal.active).map((goal) => goal.id);
-    const completedGoalIds = eligibleGoalIds.filter((goalId) => checks?.[goalId]);
-    const completionRate = eligibleGoalIds.length ? (completedGoalIds.length / eligibleGoalIds.length) * 100 : 0;
-    normalized.dailySnapshots[day] = {
-      eligibleGoalIds,
-      completedGoalIds,
-      completionRate,
-      successful: completionRate >= 70,
-    };
-  });
 
   return normalized;
 }
@@ -399,6 +345,18 @@ function formatDate(date = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { weekday: "long", day: "numeric", month: "long" }).format(date);
 }
 
+function formatShortDate(dateString) {
+  return new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short", year: "numeric" }).format(
+    new Date(`${dateString}T00:00:00`),
+  );
+}
+
+function monthsUntil(dateString) {
+  const target = new Date(`${dateString}T00:00:00`);
+  const diffDays = (target - new Date()) / (1000 * 60 * 60 * 24);
+  return Math.max(1, Math.ceil(diffDays / 30.44));
+}
+
 function renderSectionNavigation() {
   sectionNav.querySelectorAll("[data-section]").forEach((button) => {
     const isActive = button.dataset.section === activeSection;
@@ -411,7 +369,6 @@ function renderSectionNavigation() {
   budgetNav.hidden = !isFinance;
   financeActions.hidden = !isFinance;
   document.body.dataset.section = activeSection;
-  updateSidebarStreak();
 }
 
 function renderNavigation() {
@@ -454,81 +411,40 @@ function render() {
   }
 
   if (activeSection === "today") renderToday();
-  if (activeSection === "coach") renderCoach();
-  if (activeSection === "plan") renderPlan();
   if (activeSection === "training") renderTraining();
-  if (activeSection === "progress") renderProgress();
   refreshIcons();
-}
-
-function activeLifeGoals() {
-  return state.personal.goals.filter((goal) => goal.active);
-}
-
-function areaMeta(area) {
-  return AREA_META[area] || AREA_META.Livsstil;
-}
-
-function areaOptions(selected) {
-  return GOAL_AREAS.map((area) => `<option ${area === selected ? "selected" : ""}>${area}</option>`).join("");
-}
-
-function recordDailySnapshot(day = dateKey()) {
-  const checks = state.personal.dailyChecks[day] || {};
-  const eligibleGoalIds = activeLifeGoals().map((goal) => goal.id);
-  const completedGoalIds = eligibleGoalIds.filter((goalId) => Boolean(checks[goalId]));
-  const completionRate = eligibleGoalIds.length ? (completedGoalIds.length / eligibleGoalIds.length) * 100 : 0;
-  const snapshot = {
-    eligibleGoalIds,
-    completedGoalIds,
-    completionRate,
-    successful: completionRate >= SUCCESS_THRESHOLD,
-  };
-  state.personal.dailySnapshots[day] = snapshot;
-  return snapshot;
-}
-
-function snapshotForDay(day) {
-  if (day === dateKey()) return recordDailySnapshot(day);
-  return state.personal.dailySnapshots[day] || null;
-}
-
-function calculateStreak() {
-  const today = new Date();
-  const todaySnapshot = state.personal.dailySnapshots[dateKey(today)];
-  if (!todaySnapshot?.successful) today.setDate(today.getDate() - 1);
-
-  let streak = 0;
-  while (state.personal.dailySnapshots[dateKey(today)]?.successful) {
-    streak += 1;
-    today.setDate(today.getDate() - 1);
-  }
-  return streak;
-}
-
-function updateSidebarStreak() {
-  const element = document.querySelector("#sidebarStreak");
-  if (!element) return;
-  const streak = calculateStreak();
-  element.innerHTML = `
-    <span class="streak-icon" aria-hidden="true"><i data-lucide="flame"></i></span>
-    <span><strong>${streak} ${streak === 1 ? "dag" : "dagar"}</strong><small>Nuvarande svit</small></span>
-  `;
 }
 
 function passiAsset(stateName) {
   return `assets/passi/passi-${stateName}.webp`;
 }
 
-function passiMood(progress) {
-  if (progress >= SUCCESS_THRESHOLD) return "celebrating";
-  if (progress >= 25) return "encouraging";
-  if (new Date().getHours() >= 18) return "concerned";
-  return "welcome";
-}
-
 function refreshIcons() {
   if (window.lucide?.createIcons) window.lucide.createIcons({ attrs: { "stroke-width": 2 } });
+}
+
+function effectiveTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "light" || stored === "dark") return stored;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "light" || stored === "dark") document.documentElement.dataset.theme = stored;
+  else delete document.documentElement.dataset.theme;
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.content = effectiveTheme() === "dark" ? "#0b0b0d" : "#0088ff";
+  updateThemeToggleButton();
+}
+
+function updateThemeToggleButton() {
+  const button = document.querySelector("#themeToggleButton");
+  if (!button) return;
+  const isDark = effectiveTheme() === "dark";
+  button.querySelector("span").innerHTML = `<i data-lucide="${isDark ? "sun" : "moon"}"></i>`;
+  button.querySelector("strong").textContent = isDark ? "Ljust läge" : "Mörkt läge";
+  refreshIcons();
 }
 
 function getFinanceSnapshot() {
@@ -551,289 +467,50 @@ function getFinanceSnapshot() {
 }
 
 function renderToday() {
-  const goals = activeLifeGoals();
-  const today = dateKey();
-  const checks = state.personal.dailyChecks[today] || {};
-  const snapshot = recordDailySnapshot(today);
-  const doneCount = snapshot.completedGoalIds.length;
-  const completion = snapshot.completionRate;
-  const streak = calculateStreak();
-  const mood = passiMood(completion);
   const finance = getFinanceSnapshot();
+  const training = state.personal.training;
+  const weeklyLogs = training.sessionLogs.filter((log) => isInCurrentWeek(log.date));
+  const weeklyProgress = percentage(weeklyLogs.length, training.weeklyTarget);
   const greeting = new Date().getHours() < 11 ? "God morgon" : new Date().getHours() < 17 ? "God eftermiddag" : "God kväll";
-  saveState();
 
   app.innerHTML = `
-    <section class="page-heading home-heading open-heading">
+    <section class="page-heading">
       <div>
         <p class="eyebrow">${formatDate()}</p>
         <h2>${greeting}!</h2>
-        <p>Här är din riktning för idag. Små steg räknas.</p>
-      </div>
-      <span class="day-status ${snapshot.successful ? "successful" : ""}"><i data-lucide="${snapshot.successful ? "circle-check" : "sun"}"></i>${snapshot.successful ? "Dagen räknas som lyckad" : `${doneCount} av ${goals.length} mål klara`}</span>
-    </section>
-
-    <section class="focus-hero ${celebrationActive ? "celebration-burst" : ""}">
-      <div class="focus-copy">
-        <p class="eyebrow">Veckans fokus</p>
-        <textarea id="weeklyFocusInput" class="focus-input" rows="2" aria-label="Veckans fokus">${escapeHtml(state.personal.weeklyFocus)}</textarea>
-        <div class="focus-progress-copy">
-          <span>${doneCount} av ${goals.length} mål klara</span>
-          <strong>${Math.round(completion)}%</strong>
-        </div>
-        <div class="focus-progress" role="progressbar" aria-label="Dagens framsteg" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(completion)}">
-          <span style="width:${completion}%"></span>
-          <i style="left:${SUCCESS_THRESHOLD}%" aria-hidden="true"></i>
-        </div>
-        <p class="success-threshold"><i data-lucide="flag"></i> Vid ${SUCCESS_THRESHOLD}% räknas dagen som lyckad</p>
-      </div>
-      <div class="focus-mascot">
-        <img src="${passiAsset(mood)}" alt="Passi ${snapshot.successful ? "firar att dagen är lyckad" : "följer dina framsteg idag"}" />
-        <div class="streak-badge"><i data-lucide="flame"></i><strong>${streak}</strong><span>dagars svit</span></div>
+        <p>Snabb koll på ekonomi och träning.</p>
       </div>
     </section>
 
-    <section class="today-layout">
-      <div class="today-primary">
-        <section class="daily-surface">
-          <div class="section-heading">
-            <div><p class="eyebrow">Idag</p><h3>Dagens mål</h3><p>Tryck på en rad när du är klar.</p></div>
-            <button class="text-button" type="button" data-go-section="plan"><i data-lucide="settings-2"></i> Ändra planen</button>
-          </div>
-          <div class="checkin-list">
-            ${goals.length ? goals.map((goal) => {
-              const meta = areaMeta(goal.area);
-              return `
-                <label class="checkin-row area-${meta.key} ${checks[goal.id] ? "done" : ""}">
-                  <span class="goal-area-icon" aria-hidden="true"><i data-lucide="${meta.icon}"></i></span>
-                  <span class="checkin-copy"><strong>${escapeHtml(goal.name)}</strong><small>${escapeHtml(goal.area)} · ${escapeHtml(goal.target)}</small></span>
-                  <input type="checkbox" data-check-goal="${goal.id}" ${checks[goal.id] ? "checked" : ""} />
-                  <span class="checkin-control" aria-hidden="true"><i data-lucide="check"></i></span>
-                </label>
-              `;
-            }).join("") : '<div class="empty-state illustrated-empty"><i data-lucide="map"></i><p>Lägg till ditt första mål i Min plan så börjar Passi följa din riktning.</p></div>'}
-          </div>
-        </section>
+    <section class="today-summary-grid">
+      <article class="panel">
+        <div class="section-heading">
+          <div><h3>Ekonomi</h3><p>${finance.latestActualMonth >= 0 ? `${state.activeYear} hittills` : "Inget utfall registrerat"}</p></div>
+          <button class="icon-button" type="button" data-go-section="finance" aria-label="Öppna Ekonomi"><i data-lucide="arrow-up-right"></i></button>
+        </div>
+        <div class="summary-list">
+          <div class="summary-row"><span>Utgifter</span><strong>${formatCurrency(finance.totals.actualExpenses)}</strong></div>
+          <div class="summary-row"><span>${finance.expenseDifference >= 0 ? "Under budget" : "Över budget"}</span><strong class="${finance.expenseDifference >= 0 ? "positive" : "negative"}">${formatCurrency(Math.abs(finance.expenseDifference))}</strong></div>
+          <div class="summary-row total"><span>Sparat hittills</span><strong>${formatCurrency(finance.totals.actualSavings)}</strong></div>
+        </div>
+        <div class="mini-progress"><span style="width:${finance.savingsPercent}%"></span></div>
+        <small class="today-summary-note">${Math.round(finance.savingsPercent)}% av årets sparmål</small>
+      </article>
 
-        <section class="coach-invite">
-          <div class="coach-invite-icon" aria-hidden="true"><i data-lucide="messages-square"></i></div>
-          <div>
-            <p class="eyebrow">Behöver du resonera?</p>
-            <h3>Ta nästa beslut med coachen</h3>
-            <p>Coachen använder din plan och ekonomi som sammanhang. Passi finns med som stöd.</p>
-          </div>
-          <button class="button button-primary" type="button" data-go-section="coach">Prata med coachen <i data-lucide="arrow-right"></i></button>
-        </section>
-      </div>
-
-      <aside class="today-support">
-        <section class="support-section finance-support">
-          <div class="section-heading">
-            <div><span class="support-icon"><i data-lucide="wallet"></i></span><h3>Ekonomisk riktning</h3><p>${state.activeYear} hittills</p></div>
-            <button class="icon-button" type="button" data-go-section="finance" aria-label="Öppna ekonomi"><i data-lucide="arrow-up-right"></i></button>
-          </div>
-          <div class="finance-highlight">
-            <span>Sparat hittills</span><strong>${formatCurrency(finance.totals.actualSavings)}</strong>
-            <div class="mini-progress"><span style="width:${finance.savingsPercent}%"></span></div>
-            <small>${Math.round(finance.savingsPercent)}% av årets sparmål</small>
-          </div>
-          <div class="compact-stats">
-            <span><small>Utgifter</small><strong>${formatCurrency(finance.totals.actualExpenses)}</strong></span>
-            <span><small>${finance.expenseDifference >= 0 ? "Under budget" : "Över budget"}</small><strong class="${finance.expenseDifference >= 0 ? "positive" : "negative"}">${formatCurrency(Math.abs(finance.expenseDifference))}</strong></span>
-          </div>
-        </section>
-
-        <section class="support-section guidelines-support">
-          <div class="section-heading"><div><span class="support-icon"><i data-lucide="route"></i></span><h3>Dina riktlinjer</h3><p>Att luta dig mot när det blir svårt</p></div></div>
-          <div class="guideline-preview">
-            ${state.personal.guidelines.slice(0, 3).map((guideline) => `<p><i data-lucide="check"></i>${escapeHtml(guideline.text)}</p>`).join("") || '<p class="empty-state">Inga riktlinjer ännu.</p>'}
-          </div>
-          <button class="text-button" type="button" data-go-section="plan">Se hela planen <i data-lucide="arrow-right"></i></button>
-        </section>
-      </aside>
+      <article class="panel">
+        <div class="section-heading">
+          <div><h3>Träning</h3><p>Denna vecka</p></div>
+          <button class="icon-button" type="button" data-go-section="training" aria-label="Öppna Träning"><i data-lucide="arrow-up-right"></i></button>
+        </div>
+        <div class="training-count"><strong>${weeklyLogs.length}</strong><span>av ${training.weeklyTarget} pass</span></div>
+        <div class="training-progress"><span style="width:${weeklyProgress}%"></span></div>
+        <small class="today-summary-note">${weeklyProgress >= 100 ? "Veckans mål är klart." : `${Math.max(0, training.weeklyTarget - weeklyLogs.length)} pass kvar till veckans mål.`}</small>
+      </article>
     </section>
   `;
 
-  bindTodayEvents(today);
-  refreshIcons();
-}
-
-function bindTodayEvents(today) {
-  document.querySelector("#weeklyFocusInput").addEventListener("change", (event) => {
-    state.personal.weeklyFocus = event.target.value.trim() || "Välj en tydlig riktning för veckan.";
-    saveState("Veckans fokus är sparat");
-    renderToday();
-  });
-
-  document.querySelectorAll("[data-check-goal]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const wasSuccessful = Boolean(state.personal.dailySnapshots[today]?.successful);
-      state.personal.dailyChecks[today] ||= {};
-      state.personal.dailyChecks[today][input.dataset.checkGoal] = input.checked;
-      const snapshot = recordDailySnapshot(today);
-      const shouldCelebrate = !wasSuccessful
-        && snapshot.successful
-        && !state.personal.celebratedDates.includes(today);
-      if (shouldCelebrate) {
-        state.personal.celebratedDates.push(today);
-        celebrationActive = true;
-      }
-      saveState(input.checked ? "Bra. Avstämningen är registrerad" : "Avstämningen är ändrad");
-      renderToday();
-      refreshIcons();
-      if (shouldCelebrate) {
-        window.setTimeout(() => {
-          celebrationActive = false;
-          document.querySelector(".focus-hero")?.classList.remove("celebration-burst");
-        }, 1400);
-      }
-    });
-  });
-
   bindSectionLinks();
-}
-
-function renderPlan() {
-  app.innerHTML = `
-    <section class="page-heading open-heading">
-      <div>
-        <p class="eyebrow">Din personliga kompass</p>
-        <h2>Min plan</h2>
-        <p>Gör planen tydlig, personlig och enkel att följa i vardagen.</p>
-      </div>
-      <span class="day-status"><i data-lucide="target"></i>${activeLifeGoals().length} aktiva mål</span>
-    </section>
-
-    <section class="plan-layout">
-      <section class="plan-goals-surface">
-        <div class="section-heading"><div><p class="eyebrow">Din riktning</p><h3>Livsmål och vanor</h3><p>Ändringar sparas när du lämnar fältet.</p></div></div>
-        <div class="life-goal-list">
-          ${state.personal.goals.map((goal) => {
-            const meta = areaMeta(goal.area);
-            return `
-            <div class="life-goal-row area-${meta.key} ${goal.active ? "" : "paused"}" data-life-goal="${goal.id}">
-              <span class="goal-area-icon" aria-hidden="true"><i data-lucide="${meta.icon}"></i></span>
-              <div class="life-goal-fields">
-                <label><span>Mål</span><input class="life-goal-name" value="${escapeHtml(goal.name)}" aria-label="Målets namn" /></label>
-                <label><span>Område</span><select class="life-goal-area" aria-label="Målets område">${areaOptions(goal.area)}</select></label>
-                <label><span>Regel</span><input class="life-goal-target" value="${escapeHtml(goal.target)}" aria-label="Målets regel" /></label>
-              </div>
-              <label class="goal-toggle" title="Aktivera eller pausa målet">
-                <input type="checkbox" ${goal.active ? "checked" : ""} />
-                <span aria-hidden="true"></span><small>${goal.active ? "Aktiv" : "Pausad"}</small>
-              </label>
-              <button class="icon-button delete-life-goal" type="button" aria-label="Ta bort ${escapeHtml(goal.name)}"><i data-lucide="trash-2"></i></button>
-            </div>
-          `;}).join("") || '<div class="empty-state illustrated-empty"><i data-lucide="target"></i><p>Du har inte lagt till några mål ännu.</p></div>'}
-        </div>
-        <form class="add-plan-form" id="addGoalForm">
-          <div class="form-heading"><strong><i data-lucide="plus-circle"></i> Lägg till mål</strong><span>Gör det konkret nog att följa upp</span></div>
-          <label class="field"><span>Vad vill du göra?</span><input id="lifeGoalName" type="text" placeholder="Till exempel: Äta hemlagad mat" required /></label>
-          <div class="form-grid-two">
-            <label class="field"><span>Område</span><select id="lifeGoalArea">${areaOptions("Livsstil")}</select></label>
-            <label class="field"><span>Hur ofta eller vilken regel?</span><input id="lifeGoalTarget" type="text" placeholder="Till exempel: 5 dagar i veckan" required /></label>
-          </div>
-          <button class="button button-primary" type="submit"><i data-lucide="plus"></i>Lägg till mål</button>
-        </form>
-      </section>
-
-      <aside class="plan-support">
-        <section class="support-section guidelines-support">
-          <div class="section-heading"><div><span class="support-icon"><i data-lucide="route"></i></span><h3>Mina riktlinjer</h3><p>Principer för svåra eller impulsiva beslut</p></div></div>
-          <div class="guideline-list">
-            ${state.personal.guidelines.map((guideline) => `
-              <div class="guideline-row" data-guideline="${guideline.id}"><i data-lucide="check"></i><p>${escapeHtml(guideline.text)}</p><button class="icon-button delete-guideline" type="button" aria-label="Ta bort riktlinje"><i data-lucide="trash-2"></i></button></div>
-            `).join("") || '<p class="empty-state">Inga riktlinjer ännu.</p>'}
-          </div>
-          <form class="inline-add-form" id="addGuidelineForm">
-            <label class="field"><span>Ny riktlinje</span><textarea id="guidelineText" rows="3" placeholder="Till exempel: Jag väntar ett dygn innan större köp." required></textarea></label>
-            <button class="button button-secondary" type="submit">Lägg till riktlinje</button>
-          </form>
-        </section>
-
-        <section class="plan-passi">
-          <img src="${passiAsset("encouraging")}" alt="Passi uppmuntrar dig att hålla planen enkel" />
-          <div><p class="eyebrow">Veckans fokus</p><strong>${escapeHtml(state.personal.weeklyFocus)}</strong><button class="text-button" type="button" data-go-section="today">Ändra på Idag <i data-lucide="arrow-right"></i></button></div>
-        </section>
-      </aside>
-    </section>
-  `;
-
-  bindPlanEvents();
   refreshIcons();
-}
-
-function bindPlanEvents() {
-  document.querySelectorAll("[data-life-goal]").forEach((element) => {
-    const goal = state.personal.goals.find((item) => item.id === element.dataset.lifeGoal);
-    element.querySelector(".goal-toggle input").addEventListener("change", (event) => {
-      goal.active = event.target.checked;
-      recordDailySnapshot();
-      saveState(goal.active ? "Målet är aktivt" : "Målet är pausat");
-      renderPlan();
-    });
-    element.querySelector(".life-goal-name").addEventListener("change", (event) => {
-      goal.name = event.target.value.trim() || "Namnlöst mål";
-      saveState("Målet är uppdaterat");
-      renderPlan();
-    });
-    element.querySelector(".life-goal-target").addEventListener("change", (event) => {
-      goal.target = event.target.value.trim() || "Ingen regel angiven";
-      saveState("Regeln är uppdaterad");
-      renderPlan();
-    });
-    element.querySelector(".life-goal-area").addEventListener("change", (event) => {
-      goal.area = event.target.value;
-      saveState("Området är uppdaterat");
-      renderPlan();
-    });
-    element.querySelector(".delete-life-goal").addEventListener("click", () => {
-      const index = state.personal.goals.findIndex((item) => item.id === goal.id);
-      const [removed] = state.personal.goals.splice(index, 1);
-      recordDailySnapshot();
-      saveState();
-      renderPlan();
-      showToast("Målet har tagits bort", "Ångra", () => {
-        state.personal.goals.splice(index, 0, removed);
-        recordDailySnapshot();
-        saveState();
-        renderPlan();
-      });
-    });
-  });
-
-  document.querySelector("#addGoalForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    state.personal.goals.push({
-      id: uid(),
-      name: document.querySelector("#lifeGoalName").value.trim(),
-      area: document.querySelector("#lifeGoalArea").value,
-      target: document.querySelector("#lifeGoalTarget").value.trim(),
-      active: true,
-    });
-    recordDailySnapshot();
-    saveState("Målet har lagts till");
-    renderPlan();
-  });
-
-  document.querySelectorAll("[data-guideline]").forEach((element) => {
-    element.querySelector(".delete-guideline").addEventListener("click", () => {
-      state.personal.guidelines = state.personal.guidelines.filter((item) => item.id !== element.dataset.guideline);
-      saveState("Riktlinjen har tagits bort");
-      renderPlan();
-    });
-  });
-
-  document.querySelector("#addGuidelineForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const text = document.querySelector("#guidelineText").value.trim();
-    if (!text) return;
-    state.personal.guidelines.push({ id: uid(), text });
-    saveState("Riktlinjen har lagts till");
-    renderPlan();
-  });
-
-  bindSectionLinks();
 }
 
 function startOfCurrentWeek() {
@@ -1083,247 +760,6 @@ function bindTrainingEvents() {
   });
 }
 
-function buildCoachReply(message) {
-  const text = message.toLowerCase();
-  const goals = activeLifeGoals();
-  const checks = state.personal.dailyChecks[dateKey()] || {};
-  const nextGoal = goals.find((goal) => !checks[goal.id]);
-  const finance = getFinanceSnapshot();
-  const guideline = state.personal.guidelines[0]?.text;
-
-  if (/köp|köpa|beställa|pengar|dyr|budget/.test(text)) {
-    const budgetStatus = finance.expenseDifference >= 0
-      ? `Du ligger ${formatCurrency(finance.expenseDifference)} under utgiftsbudgeten hittills.`
-      : `Du ligger ${formatCurrency(Math.abs(finance.expenseDifference))} över utgiftsbudgeten hittills.`;
-    return `${budgetStatus} Innan du bestämmer dig: hjälper köpet något av dina viktigaste mål, ryms det utan att minska sparandet och känns beslutet fortfarande rätt efter ett dygn?`;
-  }
-
-  if (/mat|äta|kost|middag|lunch/.test(text)) {
-    const foodGoal = goals.find((goal) => goal.area === "Mat" || /mat|äta/i.test(goal.name));
-    if (foodGoal) {
-      const done = checks[foodGoal.id];
-      return `Ditt mål är “${foodGoal.name}” (${foodGoal.target}). Det är ${done ? "redan markerat som klart idag" : "inte markerat som klart idag"}. Vad är det minsta realistiska valet du kan göra vid nästa måltid som följer den riktningen?`;
-    }
-    return "Låt oss göra matbeslutet konkret. Vad vill du uppnå, vad står i vägen idag och vilket enkelt alternativ kan du faktiskt genomföra?";
-  }
-
-  if (/träna|träning|motion|gym|promenad/.test(text)) {
-    const healthGoal = goals.find((goal) => goal.area === "Hälsa");
-    return healthGoal
-      ? `Du har satt målet “${healthGoal.name}” (${healthGoal.target}). Bestäm en exakt tid och en minsta version som fortfarande räknas, till exempel tio minuter. När gör du den?`
-      : "Bestäm först vad som är en godkänd minsta insats idag. En kort genomförd aktivitet hjälper mer än en perfekt plan som skjuts upp.";
-  }
-
-  if (/motiv|orkar|misslyck|gav upp|svårt|jobbigt/.test(text)) {
-    return `Du behöver inte lösa hela planen just nu. ${nextGoal ? `Nästa öppna punkt är “${nextGoal.name}”.` : "Dagens avstämningar är redan klara."} Välj den minsta handlingen som för dig ett steg i rätt riktning och utvärdera efteråt.`;
-  }
-
-  if (/mål|plan|prioriter|fokus/.test(text)) {
-    return `${nextGoal ? `Börja med “${nextGoal.name}” eftersom den fortfarande är öppen idag.` : "Du har följt dagens aktiva mål."} Veckans fokus är “${state.personal.weeklyFocus}”. Vilket beslut skulle göra resten av dagen enklare?`;
-  }
-
-  return `${guideline ? `En av dina riktlinjer är: “${guideline}” ` : ""}Beskriv gärna vilket resultat du vill ha, vilka alternativ du överväger och vad som känns svårt. Då kan vi göra beslutet konkret och jämföra det med din plan.`;
-}
-
-function renderCoach() {
-  const messages = state.personal.coachMessages.slice(-40);
-  const finance = getFinanceSnapshot();
-  const todayChecks = state.personal.dailyChecks[dateKey()] || {};
-  const doneCount = activeLifeGoals().filter((goal) => todayChecks[goal.id]).length;
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")?.text.toLowerCase() || "";
-  const passiState = /svårt|jobbigt|misslyck|orkar|oro|stress/.test(lastUserMessage) ? "concerned" : "thinking";
-
-  app.innerHTML = `
-    <section class="page-heading open-heading">
-      <div>
-        <p class="eyebrow">Samtal med sammanhang</p>
-        <h2>Din coach</h2>
-        <p>Resonera om beslut utifrån dina egna mål, riktlinjer och ditt aktuella ekonomiska läge.</p>
-      </div>
-      <span class="day-status"><i data-lucide="shield-check"></i>Lokal coach</span>
-    </section>
-
-    <section class="coach-layout">
-      <aside class="coach-context">
-        <section class="coach-passi">
-          <img src="${passiAsset(passiState)}" alt="Passi lyssnar medan du pratar med coachen" />
-          <div><strong>Passi lyssnar</strong><p>Passi speglar känslan i samtalet, men det är coachen som svarar.</p></div>
-        </section>
-        <article class="panel context-panel">
-          <div class="section-heading"><div><h3>Det coachen ser</h3><p>Ditt aktuella sammanhang</p></div></div>
-          <div class="summary-list">
-            <div class="summary-row"><span>Veckans fokus</span><strong class="context-text">${escapeHtml(state.personal.weeklyFocus)}</strong></div>
-            <div class="summary-row"><span>Aktiva mål</span><strong>${activeLifeGoals().length}</strong></div>
-            <div class="summary-row"><span>Klara idag</span><strong>${doneCount}</strong></div>
-            <div class="summary-row total"><span>Kvar efter allt</span><strong class="${signedClass(finance.totals.actualResult)}">${formatCurrency(finance.totals.actualResult)}</strong></div>
-          </div>
-        </article>
-        <article class="panel coach-privacy">
-          <strong>Du styr minnet</strong>
-          <p>Samtalet och dina uppgifter sparas bara i den här webbläsaren i denna första version.</p>
-          <button class="text-button" type="button" id="clearCoachHistory">Rensa samtalet</button>
-        </article>
-      </aside>
-
-      <section class="panel coach-panel">
-        <div class="quick-prompts" aria-label="Samtalsförslag">
-          <button type="button" data-prompt="Jag funderar på att köpa något. Hjälp mig tänka igenom det.">Ett köp</button>
-          <button type="button" data-prompt="Jag har svårt att följa min plan idag. Vad gör jag nu?">Tappat riktningen</button>
-          <button type="button" data-prompt="Hjälp mig välja vad jag ska prioritera idag.">Prioritera dagen</button>
-        </div>
-        <div class="coach-messages" id="coachMessages" aria-live="polite">
-          ${messages.map((message) => `
-            <div class="coach-message ${message.role}">
-          <span>${message.role === "coach" ? "Coach" : "Du"}</span>
-              <p>${escapeHtml(message.text)}</p>
-            </div>
-          `).join("")}
-        </div>
-        <form class="coach-form" id="coachForm">
-          <label for="coachInput">Vad tänker du på?</label>
-          <textarea id="coachInput" rows="3" placeholder="Skriv vad du funderar på eller tänker göra..." required></textarea>
-          <button class="button button-primary" type="submit">Skicka <i data-lucide="send"></i></button>
-        </form>
-      </section>
-    </section>
-  `;
-
-  bindCoachEvents();
-  const messageList = document.querySelector("#coachMessages");
-  messageList.scrollTop = messageList.scrollHeight;
-  refreshIcons();
-}
-
-function bindCoachEvents() {
-  const input = document.querySelector("#coachInput");
-  document.querySelectorAll("[data-prompt]").forEach((button) => {
-    button.addEventListener("click", () => {
-      input.value = button.dataset.prompt;
-      input.focus();
-    });
-  });
-
-  document.querySelector("#coachForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-    const createdAt = new Date().toISOString();
-    state.personal.coachMessages.push({ id: uid(), role: "user", text, createdAt });
-    state.personal.coachMessages.push({ id: uid(), role: "coach", text: buildCoachReply(text), createdAt });
-    saveState();
-    renderCoach();
-  });
-
-  document.querySelector("#clearCoachHistory").addEventListener("click", () => {
-    const welcome = createPersonalState().coachMessages[0];
-    state.personal.coachMessages = [welcome];
-    saveState("Samtalet är rensat");
-    renderCoach();
-  });
-}
-
-function recentDateKeys(days = 7) {
-  return Array.from({ length: days }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - index - 1));
-    return dateKey(date);
-  });
-}
-
-function renderProgress() {
-  const dates = recentDateKeys();
-  const goals = activeLifeGoals();
-  recordDailySnapshot();
-  const snapshots = dates.map((day) => ({ day, snapshot: state.personal.dailySnapshots[day] || null }));
-  const completed = snapshots.reduce((total, item) => total + (item.snapshot?.completedGoalIds.length || 0), 0);
-  const possible = snapshots.reduce((total, item) => total + (item.snapshot?.eligibleGoalIds.length || 0), 0);
-  const successfulDays = snapshots.filter((item) => item.snapshot?.successful).length;
-  const rate = percentage(completed, possible);
-  const streak = calculateStreak();
-  const passiState = streak > 0 || successfulDays >= 4 ? "celebrating" : "encouraging";
-  saveState();
-
-  app.innerHTML = `
-    <section class="page-heading open-heading">
-      <div>
-        <p class="eyebrow">De senaste sju dagarna</p>
-        <h2>Din utveckling</h2>
-        <p>Se din rytm utan poängjakt. Det viktiga är riktningen över tid.</p>
-      </div>
-      <span class="day-status"><i data-lucide="calendar-check"></i>${successfulDays} lyckade dagar</span>
-    </section>
-
-    <section class="progress-hero">
-      <div>
-        <p class="eyebrow">Nuvarande svit</p>
-        <div class="streak-number"><i data-lucide="flame"></i><strong>${streak}</strong><span>${streak === 1 ? "dag" : "dagar"}</span></div>
-        <p>${streak ? "Du har hittat en rytm. Fortsätt med nästa lilla steg." : "En ny svit kan börja idag när du når 70 procent."}</p>
-      </div>
-      <img src="${passiAsset(passiState)}" alt="Passi ${streak ? "firar din nuvarande svit" : "uppmuntrar dig att börja en ny svit"}" />
-    </section>
-
-    <section class="metric-grid progress-metrics">
-      ${metricCard("Veckans rytm", `${Math.round(rate)}%`, `${completed} av ${possible || 0} avstämningar`) }
-      ${metricCard("Lyckade dagar", String(successfulDays), "minst 70 procent klara")}
-      ${metricCard("Aktiva mål", String(goals.length), "i din plan idag")}
-      ${metricCard("Reflektioner", String(state.personal.reflections.length), "sparade anteckningar")}
-    </section>
-
-    <section class="progress-layout">
-      <div class="dashboard-stack">
-        <section class="week-rhythm-surface">
-          <div class="section-heading"><div><p class="eyebrow">Sjudagarsrytm</p><h3>Dag för dag</h3><p>Historiska dagar ändras inte när planen gör det.</p></div></div>
-          <div class="week-rhythm" aria-label="Framsteg de senaste sju dagarna">
-            ${snapshots.map(({ day, snapshot }) => {
-              const dayLabel = new Intl.DateTimeFormat("sv-SE", { weekday: "short" }).format(new Date(`${day}T12:00:00`)).replace(".", "");
-              const progress = Math.round(snapshot?.completionRate || 0);
-              return `<div class="rhythm-day ${snapshot?.successful ? "successful" : ""}">
-                <span>${dayLabel}</span>
-                <div class="rhythm-bar"><i style="height:${Math.max(4, progress)}%"></i><b aria-hidden="true"></b></div>
-                <strong>${progress}%</strong>
-                <small>${snapshot?.successful ? "Lyckad" : snapshot ? "På väg" : "Ingen data"}</small>
-              </div>`;
-            }).join("")}
-          </div>
-        </section>
-
-        <article class="panel reflections-history">
-          <div class="section-heading"><div><h3>Tidigare reflektioner</h3><p>Dina senaste anteckningar</p></div></div>
-          <div class="reflection-list">
-            ${state.personal.reflections.slice().reverse().slice(0, 8).map((reflection) => `
-              <div class="reflection-row"><div><strong>${escapeHtml(reflection.energy)}</strong><span>${escapeHtml(reflection.date)}</span></div><p>${escapeHtml(reflection.text)}</p></div>
-            `).join("") || '<p class="empty-state">Din första reflektion kommer att visas här.</p>'}
-          </div>
-        </article>
-      </div>
-
-      <aside class="dashboard-stack">
-        <article class="panel reflection-panel colorful-panel">
-          <div class="section-heading"><div><h3>Stanna upp en minut</h3><p>En kort reflektion räcker</p></div></div>
-          <form id="reflectionForm">
-            <label class="field"><span>Hur känns energin?</span><select id="reflectionEnergy"><option>Låg energi</option><option selected>Okej energi</option><option>Bra energi</option><option>Mycket bra energi</option></select></label>
-            <label class="field"><span>Vad fungerade eller var svårt?</span><textarea id="reflectionText" rows="6" placeholder="Skriv några meningar..." required></textarea></label>
-            <button class="button button-primary" type="submit">Spara reflektion</button>
-          </form>
-        </article>
-      </aside>
-    </section>
-  `;
-
-  document.querySelector("#reflectionForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    state.personal.reflections.push({
-      id: uid(),
-      date: dateKey(),
-      energy: document.querySelector("#reflectionEnergy").value,
-      text: document.querySelector("#reflectionText").value.trim(),
-    });
-    saveState("Reflektionen är sparad");
-    renderProgress();
-  });
-  refreshIcons();
-}
-
 function bindSectionLinks() {
   document.querySelectorAll("[data-go-section]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1348,8 +784,7 @@ function renderDashboard() {
   const ytdTotals = totalMonths(recordedMonths);
   const futureTotals = totalMonths(futureMonths);
   const savingsPercent = percentage(ytdTotals.actualSavings, year.savingsGoal);
-  const monthsWithActual = recordedMonths.length;
-  const monthsLeft = Math.max(1, 12 - monthsWithActual);
+  const monthsLeft = monthsUntil(year.savingsGoalDate);
   const remainingSavings = Math.max(0, year.savingsGoal - ytdTotals.actualSavings);
   const monthlyNeeded = remainingSavings / monthsLeft;
   const expensePercent = percentage(ytdTotals.actualExpenses, ytdTotals.budgetExpenses);
@@ -1360,7 +795,6 @@ function renderDashboard() {
     : expenseDifference >= 0
       ? `${formatCurrency(expenseDifference)} under budget`
       : `${formatCurrency(Math.abs(expenseDifference))} över budget`;
-  const forecastSavings = ytdTotals.actualSavings + futureTotals.budgetSavings;
   const forecastResult = ytdTotals.actualResult + futureTotals.budgetResult;
   const allocatedSavings = year.goals.reduce((sum, goal) => sum + (Number(goal.saved) || 0), 0);
   const unallocatedSavings = ytdTotals.actualSavings - allocatedSavings;
@@ -1388,8 +822,9 @@ function renderDashboard() {
           <div class="section-heading">
             <div>
               <h3>Budget mot utfall</h3>
-              <p>Utgifter per månad</p>
+              <p>${showAllMonths ? "Utgifter per månad, hela året" : "Nuvarande månad"}</p>
             </div>
+            <button class="button button-secondary months-toggle" id="toggleMonths" type="button">${showAllMonths ? "Visa bara denna månad" : "Visa alla månader"}</button>
           </div>
           ${renderBarChart(year, latestActualMonth)}
         </article>
@@ -1398,9 +833,8 @@ function renderDashboard() {
           <div class="section-heading">
             <div>
               <h3>Kvar varje månad</h3>
-              <p>Senaste månaderna visas först på mindre skärmar</p>
+              <p>${showAllMonths ? "Hela året" : "Nuvarande månad"}</p>
             </div>
-            <button class="button button-secondary mobile-table-toggle" id="toggleMonthTable" type="button">${showAllMonths ? "Visa färre" : "Visa hela året"}</button>
           </div>
           ${renderMonthTable(year, latestActualMonth)}
         </article>
@@ -1421,12 +855,21 @@ function renderDashboard() {
             </div>
             <div class="savings-copy">
               <strong>${formatCurrency(ytdTotals.actualSavings)}</strong>
-              <p>av ${formatCurrency(year.savingsGoal)}. Spara cirka ${formatCurrency(monthlyNeeded)} per återstående månad för att nå målet.</p>
+              <p>av ${formatCurrency(year.savingsGoal)} till ${formatShortDate(year.savingsGoalDate)}</p>
             </div>
           </div>
+          <div class="summary-list">
+            <div class="summary-row"><span>Kvar till målet</span><strong>${formatCurrency(remainingSavings)}</strong></div>
+            <div class="summary-row"><span>Behövs per återstående månad</span><strong>${formatCurrency(monthlyNeeded)}</strong></div>
+            <div class="summary-row total"><span>Beräknat kvar vid årets slut</span><strong class="${signedClass(forecastResult)}">${formatCurrency(forecastResult)}</strong></div>
+          </div>
           <div class="inline-field">
-            <label for="annualSavingsGoal">Årligt sparmål</label>
+            <label for="annualSavingsGoal">Sparmål</label>
             <span class="money-field"><input class="money-input" id="annualSavingsGoal" type="text" inputmode="numeric" value="${formatInputAmount(year.savingsGoal)}" /><span>kr</span></span>
+          </div>
+          <div class="inline-field">
+            <label for="savingsGoalDate">Måldatum</label>
+            <input class="date-input" id="savingsGoalDate" type="date" value="${year.savingsGoalDate}" />
           </div>
         </article>
 
@@ -1444,21 +887,6 @@ function renderDashboard() {
           <div class="allocation-summary">
             <span>${unallocatedSavings >= 0 ? "Ofördelat sparande" : "Överfördelat på mål"}</span>
             <strong class="${signedClass(unallocatedSavings)}">${formatCurrency(Math.abs(unallocatedSavings))}</strong>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="section-heading">
-            <div>
-              <h3>Din plan framåt</h3>
-              <p>Baserat på årets registrerade utfall</p>
-            </div>
-          </div>
-          <div class="summary-list">
-            <div class="summary-row"><span>Kvar till sparmålet</span><strong>${formatCurrency(remainingSavings)}</strong></div>
-            <div class="summary-row"><span>Behövs per återstående månad</span><strong>${formatCurrency(monthlyNeeded)}</strong></div>
-            <div class="summary-row"><span>Prognos sparande helår</span><strong>${formatCurrency(forecastSavings)}</strong></div>
-            <div class="summary-row total"><span>Beräknat kvar vid årets slut</span><strong class="${signedClass(forecastResult)}">${formatCurrency(forecastResult)}</strong></div>
           </div>
         </article>
       </aside>
@@ -1485,11 +913,14 @@ function renderBarChart(year, latestActualMonth) {
     return [totals.budgetExpenses, totals.actualExpenses];
   });
   const maxValue = Math.max(...values, 1);
+  const compactMonth = latestActualMonth >= 0 ? latestActualMonth : 0;
+  const visibleIndexes = showAllMonths ? year.months.map((_, index) => index) : [compactMonth];
 
   return `
-    <div class="bar-chart" aria-label="Budgeterade och faktiska utgifter per månad">
-      ${year.months
-        .map((month, index) => {
+    <div class="bar-chart ${showAllMonths ? "" : "compact"}" aria-label="Budgeterade och faktiska utgifter per månad">
+      ${visibleIndexes
+        .map((index) => {
+          const month = year.months[index];
           const totals = monthTotals(month);
           const budgetWidth = Math.max(2, (totals.budgetExpenses / maxValue) * 100);
           const actualWidth = totals.actualExpenses ? Math.max(2, (totals.actualExpenses / maxValue) * 100) : 0;
@@ -1521,8 +952,9 @@ function renderBarChart(year, latestActualMonth) {
 }
 
 function renderMonthTable(year, latestActualMonth) {
-  const compactStart = latestActualMonth >= 0 ? Math.max(0, latestActualMonth - 3) : 0;
-  const compactEnd = latestActualMonth >= 0 ? latestActualMonth : 3;
+  const compactMonth = latestActualMonth >= 0 ? latestActualMonth : 0;
+  const compactStart = compactMonth;
+  const compactEnd = compactMonth;
   return `
     <div class="table-wrap month-result-wrap">
       <table class="month-result-table">
@@ -1541,11 +973,11 @@ function renderMonthTable(year, latestActualMonth) {
               const noData = '<span class="no-data">Ej registrerat</span>';
               return `
                 <tr class="${hideOnCompact ? "compact-hidden" : ""} ${hasActual ? "" : "future-row"}">
-                  <td><button class="text-button month-link" type="button" data-open-month="${index}">${MONTHS[index]}</button>${currentBadge}</td>
-                  <td class="optional-mobile">${hasActual ? formatCurrency(totals.actualIncome) : noData}</td>
-                  <td>${hasActual ? formatCurrency(totals.actualExpenses) : noData}</td>
-                  <td class="optional-mobile">${hasActual ? formatCurrency(totals.actualSavings) : noData}</td>
-                  <td class="${hasActual ? signedClass(totals.actualResult) : ""}">${hasActual ? formatCurrency(totals.actualResult) : noData}</td>
+                  <td data-label="Månad"><button class="text-button month-link" type="button" data-open-month="${index}">${MONTHS[index]}</button>${currentBadge}</td>
+                  <td class="optional-mobile" data-label="Inkomst">${hasActual ? formatCurrency(totals.actualIncome) : noData}</td>
+                  <td data-label="Utgifter">${hasActual ? formatCurrency(totals.actualExpenses) : noData}</td>
+                  <td class="optional-mobile" data-label="Sparande">${hasActual ? formatCurrency(totals.actualSavings) : noData}</td>
+                  <td class="${hasActual ? signedClass(totals.actualResult) : ""}" data-label="Kvar">${hasActual ? formatCurrency(totals.actualResult) : noData}</td>
                 </tr>
               `;
             })
@@ -1581,7 +1013,14 @@ function bindDashboardEvents() {
     renderDashboard();
   });
 
-  document.querySelector("#toggleMonthTable").addEventListener("click", () => {
+  document.querySelector("#savingsGoalDate").addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    currentYearData().savingsGoalDate = event.target.value;
+    saveState("Måldatumet är uppdaterat");
+    renderDashboard();
+  });
+
+  document.querySelector("#toggleMonths").addEventListener("click", () => {
     showAllMonths = !showAllMonths;
     renderDashboard();
   });
@@ -1949,6 +1388,7 @@ document.querySelector("#yearForm").addEventListener("submit", (event) => {
     const source = currentYearData();
     state.years[newYear] = {
       savingsGoal: source.savingsGoal,
+      savingsGoalDate: `${newYear}-12-31`,
       goals: source.goals.map((goal) => ({ ...goal, id: uid(), saved: 0 })),
       months: source.months.map((month) => ({
         incomes: month.incomes.map((item) => ({ ...item, id: uid(), actual: 0 })),
@@ -1973,4 +1413,14 @@ document.querySelector("#exportButton").addEventListener("click", () => {
   showToast("En säkerhetskopia har laddats ner");
 });
 
+document.querySelector("#themeToggleButton").addEventListener("click", () => {
+  localStorage.setItem(THEME_KEY, effectiveTheme() === "dark" ? "light" : "dark");
+  applyTheme();
+});
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!localStorage.getItem(THEME_KEY)) applyTheme();
+});
+
+applyTheme();
 render();

@@ -1,4 +1,4 @@
-const CACHE_NAME = "kompassi-shell-v1";
+const CACHE_NAME = "kompassi-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -9,10 +9,8 @@ const APP_SHELL = [
   "./assets/vendor/lucide.min.js",
   "./assets/icons/kompassi-app-icon.png",
   "./assets/passi/passi-welcome.webp",
-  "./assets/passi/passi-thinking.webp",
   "./assets/passi/passi-encouraging.webp",
-  "./assets/passi/passi-celebrating.webp",
-  "./assets/passi/passi-concerned.webp"
+  "./assets/passi/passi-celebrating.webp"
 ];
 
 self.addEventListener("install", (event) => {
