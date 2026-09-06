@@ -23,6 +23,7 @@ let activeSection = "today";
 let activeView = "dashboard";
 let toastTimer;
 let showAllMonths = false;
+let revealCurrentMonth = false;
 
 const app = document.querySelector("#app");
 const sectionNav = document.querySelector("#sectionNav");
@@ -256,7 +257,9 @@ function formatCompact(value) {
 }
 
 function formatInputAmount(value) {
-  return new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(Number(value) || 0);
+  const amount = Number(value) || 0;
+  if (amount === 0) return "";
+  return new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount);
 }
 
 function parseAmount(value) {
@@ -390,12 +393,15 @@ function renderNavigation() {
   if (activeView === "dashboard") dashboardButton.setAttribute("aria-current", "page");
   else dashboardButton.removeAttribute("aria-current");
 
+  const currentMonth = monthTabs.querySelector(".current-month");
   const activeMonth = monthTabs.querySelector(".active");
-  if (activeMonth) {
+  const monthToShow = revealCurrentMonth ? currentMonth || activeMonth : activeMonth || currentMonth;
+  revealCurrentMonth = false;
+  if (monthToShow) {
     const tabsRect = monthTabs.getBoundingClientRect();
-    const activeRect = activeMonth.getBoundingClientRect();
-    const activeCenter = activeRect.left - tabsRect.left + monthTabs.scrollLeft + activeRect.width / 2;
-    monthTabs.scrollLeft = activeCenter - monthTabs.clientWidth / 2;
+    const monthRect = monthToShow.getBoundingClientRect();
+    const monthCenter = monthRect.left - tabsRect.left + monthTabs.scrollLeft + monthRect.width / 2;
+    monthTabs.scrollLeft = monthCenter - monthTabs.clientWidth / 2;
   }
 }
 
@@ -1208,6 +1214,9 @@ function bindMonthEvents(monthIndex) {
 
     section.querySelectorAll("tr[data-row-id]").forEach((rowElement) => {
       const row = rows.find((item) => item.id === rowElement.dataset.rowId);
+      rowElement.querySelectorAll(".amount-input").forEach((input) => {
+        input.addEventListener("focus", () => input.select());
+      });
       rowElement.querySelector(".name-input").addEventListener("change", (event) => {
         row.name = event.target.value.trim() || "Namnlös";
         saveState("Ändringen är sparad");
@@ -1298,6 +1307,7 @@ function escapeHtml(value) {
 sectionNav.addEventListener("click", (event) => {
   const button = event.target.closest("[data-section]");
   if (!button) return;
+  revealCurrentMonth = button.dataset.section === "finance" && activeSection !== "finance";
   activeSection = button.dataset.section;
   render();
   app.focus();

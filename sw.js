@@ -1,4 +1,4 @@
-const CACHE_NAME = "kompassi-shell-v2";
+const CACHE_NAME = "kompassi-shell-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
